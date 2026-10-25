@@ -21,7 +21,7 @@ Not included in the first release: collaboration, public sharing, rich-text edit
 - React + TypeScript + Vite
 - Supabase Auth + PostgreSQL + Row Level Security
 - One Supabase Edge Function for AI requests
-- OpenAI Responses API for optional AI assistance
+- Google Gemini Interactions API for optional AI assistance
 - Vitest unit tests
 
 There is no separate Express/Spring API. Normal note operations use supabase-js and are restricted by database RLS.
@@ -47,11 +47,11 @@ If local Supabase settings are missing, the app shows an in-app setup page rathe
 
 AI is optional. The rest of the app works without an AI provider key.
 
-1. Create an API key in your OpenAI API account.
-2. In Supabase Dashboard → Edge Functions → Secrets, set OPENAI_API_KEY.
-3. Optionally set OPENAI_MODEL to a model enabled for your API project. The function defaults to gpt-4o-mini; this is configurable without changing the frontend.
-4. Deploy supabase/functions/ai-note-assist/index.ts as the ai-note-assist Edge Function.
-5. Keep JWT verification enabled. The function validates the caller's session and enforces a per-account daily request quota.
+1. Create a Gemini API key in [Google AI Studio](https://aistudio.google.com/apikey).
+2. In Supabase Dashboard → Edge Functions → Secrets, set GEMINI_API_KEY to that key. Never put it in VITE_ variables or frontend code.
+3. Optionally set GEMINI_MODEL to a model available to your API key. The function defaults to gemini-3.6-flash; this is configurable without changing the frontend.
+4. Deploy supabase/functions/ai-note-assist/index.ts as the ai-note-assist Edge Function. Keep JWT verification enabled; the function validates the caller's session and enforces a per-account daily request quota.
+5. The function uses Gemini's Interactions API with store=false, so it does not request persistent interaction history. Google still processes the submitted text to return a result; review Google's terms and data handling before sending sensitive notes.
 
 The AI function accepts only four actions: explain, improve, summarize, and generate. It limits input lengths and request duration. It does not write note content or model output to an application table or log; only action metadata is stored for quotas. Submitted text is sent to the external AI provider, so don't submit sensitive material unless you're comfortable with the provider's terms.
 
