@@ -32,7 +32,13 @@ export function readGeminiOutput(payload: Record<string, unknown>): string {
       }
     }
   }
-  return pieces.join("\n").trim();
+  let combined = "";
+  for (const piece of pieces) {
+    if (!combined) combined = piece;
+    else if (/^\s/.test(piece) || /\s$/.test(combined)) combined += piece;
+    else combined += "\n" + piece;
+  }
+  return combined.trim();
 }
 
 export function readGroqOutput(payload: Record<string, unknown>): GroqOutput {
