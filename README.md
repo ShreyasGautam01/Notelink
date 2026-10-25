@@ -47,13 +47,14 @@ If local Supabase settings are missing, the app shows an in-app setup page rathe
 
 AI is optional. The rest of the app works without an AI provider key.
 
-1. Create a Gemini API key in [Google AI Studio](https://aistudio.google.com/apikey).
-2. In Supabase Dashboard → Edge Functions → Secrets, set GEMINI_API_KEY to that key. Never put it in VITE_ variables or frontend code.
-3. Optionally set GEMINI_MODEL to a model available to your API key. The function defaults to gemini-3.6-flash; this is configurable without changing the frontend.
-4. Deploy supabase/functions/ai-note-assist/index.ts as the ai-note-assist Edge Function. Keep JWT verification enabled; the function validates the caller's session and enforces a per-account daily request quota.
-5. The function uses Gemini's Interactions API with store=false, so it does not request persistent interaction history. Google still processes the submitted text to return a result; review Google's terms and data handling before sending sensitive notes.
+1. Create a Gemini API key in [Google AI Studio](https://aistudio.google.com/apikey). In Supabase Dashboard → Edge Functions → Secrets, set GEMINI_API_KEY. Never put provider keys in VITE_ variables or frontend code.
+2. Optionally create a [Groq API key](https://console.groq.com/keys) and set GROQ_API_KEY in the same Supabase Edge Function Secrets page. Groq is used once as a backup when Gemini fails or returns an incomplete draft. If GROQ_API_KEY is absent, the function still works with Gemini alone.
+3. The default primary model is gemini-3.8-flash. Override it with GEMINI_MODEL only when needed. The default fallback model is openai/gpt-oss-20b; override it with GROQ_MODEL if required.
+4. Deploy supabase/functions/ai-note-assist/index.ts and keep JWT verification enabled. The function validates the caller's session and enforces one per-account daily quota across both providers; a successful fallback counts as one AI action.
+5. Gemini requests use the Interactions API with store=false. Groq requests use its OpenAI-compatible Chat Completions API. Both providers process submitted text to generate an answer, so review their terms and data-handling policies before sending sensitive notes.
+6. Generated notes must include a Markdown title and a sufficiently complete body. Incomplete Gemini interactions, output-limit truncation, and invalid short generated notes are rejected; the function attempts one Groq fallback rather than saving a fragment.
 
-The AI function accepts only four actions: explain, improve, summarize, and generate. It limits input lengths and request duration. It does not write note content or model output to an application table or log; only action metadata is stored for quotas. Submitted text is sent to the external AI provider, so don't submit sensitive material unless you're comfortable with the provider's terms.
+The AI function accepts only four actions: explain, improve, summarize, and generate. It limits input lengths and each provider request to 18 seconds. It never logs note text or generated output; only action metadata is stored for quotas. Gemini is tried first when configured, then Groq is attempted at most once after a provider failure or incomplete result. A successful fallback is still counted as one AI action. Free-tier limits and availability are provider-specific, and either provider can be temporarily unavailable.
 
 ## Data security
 
