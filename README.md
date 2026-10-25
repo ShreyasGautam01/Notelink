@@ -30,8 +30,8 @@ There is no separate Express/Spring API. Normal note operations use supabase-js 
 
 1. Install Node.js 20.19+ or 22.12+.
 2. Clone this repository and run npm install.
-3. Copy .env.example to .env.local.
-4. In Supabase Dashboard → Project Settings → API Keys, copy the project URL and publishable key to .env.local. Never use a secret/service-role key in browser code.
+3. Copy .env.example to .env.local. The example is preconfigured with this project's public URL and publishable key.
+4. Never use a secret/service-role key in browser code. The publishable key is intentionally designed for browser use; RLS still enforces row access.
 5. In Supabase Dashboard → Authentication → URL Configuration, add http://localhost:5173 to allowed redirect URLs if required by your Auth settings.
 6. Apply the SQL migration in supabase/migrations/ to your Supabase project. The initial migration for this project is also applied in the hosted development database.
 7. Run npm run dev and open the URL shown by Vite.

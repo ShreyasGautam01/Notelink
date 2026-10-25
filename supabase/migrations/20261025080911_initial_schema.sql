@@ -10,7 +10,7 @@ create table if not exists public.notes (
   is_pinned boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint notes_title_length check (char_length(btrim(title)) <= 160),
+  constraint notes_title_length check (char_length(btrim(title)) between 1 and 160),
   constraint notes_content_length check (char_length(content) <= 50000),
   constraint notes_category_length check (category is null or char_length(category) <= 80),
   constraint notes_color_hex check (color ~ '^#[0-9A-Fa-f]{6}$'),
@@ -68,7 +68,6 @@ revoke all on public.ai_usage from anon, authenticated;
 grant select, insert, update, delete on public.notes to authenticated;
 grant select, insert, update, delete on public.note_links to authenticated;
 grant all on public.ai_usage to service_role;
-create policy "ai_usage_service_role_all" on public.ai_usage for all to service_role using (true) with check (true);
 
 create policy "notes_select_own" on public.notes for select to authenticated using ((select auth.uid()) = user_id);
 create policy "notes_insert_own" on public.notes for insert to authenticated with check ((select auth.uid()) = user_id);
