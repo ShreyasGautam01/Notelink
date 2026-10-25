@@ -25,14 +25,16 @@ const instructions: Record<Action, string> = {
 };
 
 function readOutput(payload: Record<string, unknown>): string {
-  if (typeof payload.output_text === "string") return payload.output_text.trim();
-  const output = payload.output;
-  if (!Array.isArray(output)) return "";
+  if (!Array.isArray(payload.steps)) return "";
   const pieces: string[] = [];
-  for (const item of output) {
-    if (!item || typeof item !== "object" || !("content" in item) || !Array.isArray(item.content)) continue;
-    for (const part of item.content) {
-      if (part && typeof part === "object" && "text" in part && typeof part.text === "string") pieces.push(part.text);
+  for (const step of payload.steps) {
+    if (!step || typeof step !== "object" || !("type" in step) || step.type !== "model_output") continue;
+    if (!("content" in step) || !Array.isArray(step.content)) continue;
+    for (const part of step.content) {
+      if (part && typeof part === "object" && "type" in part && part.type === "text" &&
+          "text" in part && typeof part.text === "string") {
+        pieces.push(part.text);
+      }
     }
   }
   return pieces.join("\n").trim();
@@ -65,14 +67,14 @@ Deno.serve(async (request: Request) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const openAiKey = Deno.env.get("OPENAI_API_KEY");
-  const model = Deno.env.get("OPENAI_MODEL") || "gpt-4o-mini";
+  const geminiKey = Deno.env.get("GEMINI_API_KEY");
+  const model = Deno.env.get("GEMINI_MODEL") || "gemini-3.6-flash";
 
   if (!supabaseUrl || !anonKey || !serviceKey) {
     console.error("AI note assist is missing Supabase server configuration.");
     return json(503, { error: "AI assistance is not fully configured on the server yet." });
   }
-  if (!openAiKey) return json(503, { error: "AI assistance is not configured yet. Add OPENAI_API_KEY in Supabase Edge Function secrets." });
+  if (!geminiKey) return json(503, { error: "AI assistance is not configured yet. Add GEMINI_API_KEY in Supabase Edge Function secrets." });
 
   try {
     const userClient = createClient(supabaseUrl, anonKey, {
@@ -102,18 +104,20 @@ Deno.serve(async (request: Request) => {
     const timeout = setTimeout(() => controller.abort(), 25_000);
     let providerResponse: Response;
     try {
-      providerResponse = await fetch("https://api.openai.com/v1/responses", {
+      providerResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
         method: "POST",
         signal: controller.signal,
-        headers: { Authorization: "Bearer " + openAiKey, "Content-Type": "application/json" },
+        headers: {
+          "x-goog-api-key": geminiKey,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           model,
+          input: userInput,
+          system_instruction: instructions[selectedAction],
+          generation_config: { max_output_tokens: 800 },
+          // Keep the interaction stateless and avoid storing note content in Gemini history.
           store: false,
-          max_output_tokens: 800,
-          input: [
-            { role: "system", content: instructions[selectedAction] },
-            { role: "user", content: userInput },
-          ],
         }),
       });
     } catch (caught) {
@@ -124,9 +128,10 @@ Deno.serve(async (request: Request) => {
     }
 
     if (!providerResponse.ok) {
-      console.error("OpenAI Responses API returned status", providerResponse.status);
+      console.error("Gemini Interactions API returned status", providerResponse.status);
       if (providerResponse.status === 429) return json(429, { error: "The AI provider is busy or its API quota is exhausted. Try later." });
-      if (providerResponse.status === 401 || providerResponse.status === 403) return json(503, { error: "The server's AI provider key is not accepted. Check OPENAI_API_KEY." });
+      if (providerResponse.status === 401 || providerResponse.status === 403) return json(503, { error: "Google rejected the Gemini API key. Check GEMINI_API_KEY and its API access." });
+      if (providerResponse.status === 400 || providerResponse.status === 404) return json(502, { error: "Gemini rejected the model request. Check GEMINI_MODEL and that the model is available to your API key." });
       return json(502, { error: "The AI provider could not complete this request. Try again shortly." });
     }
 

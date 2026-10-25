@@ -49,7 +49,7 @@ Acceptance: TypeScript, build, and unit tests pass locally; tables have RLS; acc
 - Test signup/signin/signout; confirm email redirect settings.
 - Test create/edit/delete, reload persistence, links, backlinks, graph, and export.
 - Run Supabase security and performance advisors.
-- Configure OPENAI_API_KEY in Edge Function secrets and test each AI action, missing-key handling, expired sessions, oversized input, and quota behavior.
+- Configure GEMINI_API_KEY in Edge Function secrets and test each AI action, missing-key handling, expired sessions, oversized input, and quota behavior.
 
 ### M2 — UX quality
 - Test autosave during rapid edits, tab switches, connection loss, and errors; add explicit retry behavior if needed.
