@@ -68,6 +68,7 @@ revoke all on public.ai_usage from anon, authenticated;
 grant select, insert, update, delete on public.notes to authenticated;
 grant select, insert, update, delete on public.note_links to authenticated;
 grant all on public.ai_usage to service_role;
+create policy "ai_usage_service_role_all" on public.ai_usage for all to service_role using (true) with check (true);
 
 create policy "notes_select_own" on public.notes for select to authenticated using ((select auth.uid()) = user_id);
 create policy "notes_insert_own" on public.notes for insert to authenticated with check ((select auth.uid()) = user_id);
