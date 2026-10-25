@@ -104,8 +104,8 @@ export default function App() {
     saveTimers.current.clear();
   }, []);
 
-  const createNote = useCallback(async (initialContent?: string, initialTitle?: string) => {
-    if (!session) return;
+  const createNote = useCallback(async (initialContent?: string, initialTitle?: string): Promise<boolean> => {
+    if (!session) return false;
     setWorkspaceError("");
     setNotice("");
     try {
@@ -124,8 +124,10 @@ export default function App() {
       setScreen("notes");
       setSearch("");
       setCategoryFilter("All notes");
+      return true;
     } catch (caught) {
       setWorkspaceError(caught instanceof Error ? caught.message : "Could not create note.");
+      return false;
     }
   }, [session]);
 
@@ -246,7 +248,8 @@ export default function App() {
     if (!aiResult) return;
     if (aiAction === "generate") {
       const proposedTitle = aiPrompt.trim().split(/\s+/).slice(0, 7).join(" ").replace(/[.?!]$/, "").slice(0, 70) || "AI draft";
-      await createNote(aiResult, proposedTitle);
+      const created = await createNote(aiResult, proposedTitle);
+      if (!created) return;
       setNotice("AI draft saved as a new note. Review it before relying on it.");
     } else {
       patchActive({ content: aiResult });

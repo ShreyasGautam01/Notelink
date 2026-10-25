@@ -10,7 +10,7 @@ create table if not exists public.notes (
   is_pinned boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint notes_title_length check (char_length(btrim(title)) between 1 and 160),
+  constraint notes_title_length check (char_length(btrim(title)) <= 160),
   constraint notes_content_length check (char_length(content) <= 50000),
   constraint notes_category_length check (category is null or char_length(category) <= 80),
   constraint notes_color_hex check (color ~ '^#[0-9A-Fa-f]{6}$'),
