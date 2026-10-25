@@ -1,0 +1,4 @@
+project_id = "rqfjaxoelszrhsetpddv"
+
+[functions.ai-note-assist]
+verify_jwt = true
