@@ -21,7 +21,7 @@ NoteLink is a private personal knowledge workspace. Notes are atomic by default 
 - PostgreSQL is the source of truth.
 - RLS scopes each note and link to auth.uid().
 - Composite foreign keys include owner ID and note ID, preventing links from crossing account boundaries.
-- One Edge Function verifies the caller, checks a per-user daily request limit, validates payloads, calls the model with a timeout, and returns a transient draft.
+- One Edge Function verifies the caller, checks a per-user daily request limit, validates payloads, routes to Gemini with a bounded Groq fallback, validates response completion, and returns a transient draft.
 - The AI provider key stays in Edge Function secrets; it is never sent to the browser.
 
 ## Data model
@@ -49,10 +49,10 @@ Acceptance: TypeScript, build, and unit tests pass locally; tables have RLS; acc
 - Test signup/signin/signout; confirm email redirect settings.
 - Test create/edit/delete, reload persistence, links, backlinks, graph, and export.
 - Run Supabase security and performance advisors.
-- Configure GEMINI_API_KEY in Edge Function secrets and test each AI action, missing-key handling, expired sessions, oversized input, and quota behavior.
+- Configure GEMINI_API_KEY and GROQ_API_KEY in Edge Function secrets; test every AI action, incomplete output rejection, provider failover, missing keys, invalid sessions, oversized input, and quota behavior.
 
 ### M2 — UX quality
-- Test autosave during rapid edits, tab switches, connection loss, and errors; add explicit retry behavior if needed.
+- Test autosave during rapid edits, tab switches, connection loss, and errors. Test AI drafts for completeness, specific titles, useful examples, provider failures, and readable user-facing errors.
 - Verify keyboard navigation, focus management, labels, and small-screen layout.
 - Review dense graph behavior and improve layout only if usage shows the circular layout is limiting.
 - Add browser end-to-end tests for primary flows.

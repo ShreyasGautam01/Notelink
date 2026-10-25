@@ -14,6 +14,23 @@ import { LINK_TYPES, linkLabel } from "./types";
 
 type Screen = "notes" | "graph";
 type AiAction = "explain" | "improve" | "summarize" | "generate";
+
+async function getAiInvocationError(caught: unknown): Promise<string> {
+  if (caught && typeof caught === "object") {
+    const candidate = caught as { message?: unknown; context?: unknown };
+    if (candidate.context instanceof Response) {
+      try {
+        const payload = await candidate.context.clone().json() as { error?: unknown };
+        if (typeof payload.error === "string" && payload.error.trim()) return payload.error;
+      } catch {
+        // The response may not contain JSON; fall back to the SDK's error message.
+      }
+    }
+    if (typeof candidate.message === "string" && candidate.message.trim()) return candidate.message;
+  }
+  return "AI assistance failed. Please try again.";
+}
+
 const COLORS = ["#D9E8E4", "#F7DCC9", "#E8DDF8", "#F5E6A9", "#CFE3F8", "#E9D9D4"];
 const AI_ACTIONS: { action: AiAction; title: string; description: string }[] = [
   { action: "explain", title: "Explain this note", description: "Clarify the main idea in plain language." },
@@ -43,6 +60,8 @@ export default function App() {
   const [aiAction, setAiAction] = useState<AiAction | null>(null);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiResult, setAiResult] = useState("");
+  const [aiDraftTitle, setAiDraftTitle] = useState("");
+  const [aiProviderNotice, setAiProviderNotice] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState("");
   const [showAiPanel, setShowAiPanel] = useState(false);
@@ -230,6 +249,8 @@ export default function App() {
     setAiBusy(true);
     setAiError("");
     setAiResult("");
+    setAiDraftTitle("");
+    setAiProviderNotice("");
     setShowAiPanel(true);
     try {
       const { data, error } = await getSupabase().functions.invoke("ai-note-assist", {
@@ -239,15 +260,21 @@ export default function App() {
       if (data?.error) throw new Error(data.error);
       if (typeof data?.text !== "string" || !data.text.trim()) throw new Error("The AI returned an empty draft. Try again.");
       setAiResult(data.text.trim());
+      setAiDraftTitle(typeof data.title === "string" ? data.title.trim() : "");
+      setAiProviderNotice(data.fallbackUsed === true
+        ? "Gemini was unavailable; this draft was generated with Groq."
+        : data.provider === "groq"
+          ? "This draft was generated with Groq because Gemini is not configured."
+          : "");
     } catch (caught) {
-      setAiError(caught instanceof Error ? caught.message : "AI assistance is unavailable. Check Edge Function setup.");
+      setAiError(await getAiInvocationError(caught));
     } finally { setAiBusy(false); }
   }
 
   async function applyAiResult() {
     if (!aiResult) return;
     if (aiAction === "generate") {
-      const proposedTitle = aiPrompt.trim().split(/\s+/).slice(0, 7).join(" ").replace(/[.?!]$/, "").slice(0, 70) || "AI draft";
+      const proposedTitle = aiDraftTitle || aiPrompt.trim().split(/\s+/).slice(0, 7).join(" ").replace(/[.?!]$/, "").slice(0, 70) || "AI draft";
       const created = await createNote(aiResult, proposedTitle);
       if (!created) return;
       setNotice("AI draft saved as a new note. Review it before relying on it.");
@@ -318,7 +345,7 @@ export default function App() {
       </div>
       <div className="sidebar-bottom">
         <button className="utility-row" onClick={exportWorkspace}><FileDown size={16} /><span>Export workspace</span></button>
-        <button className="utility-row" onClick={() => { setAiAction("generate"); setAiPrompt(""); setAiResult(""); setAiError(""); setShowAiPanel(true); }}><Sparkles size={16} /><span>AI note assistant</span><span className="tiny-new">BETA</span></button>
+        <button className="utility-row" onClick={() => { setAiAction("generate"); setAiPrompt(""); setAiResult(""); setAiDraftTitle(""); setAiProviderNotice(""); setAiError(""); setShowAiPanel(true); }}><Sparkles size={16} /><span>AI note assistant</span><span className="tiny-new">BETA</span></button>
         <div className="sidebar-bottom-user"><span className="avatar">{(session.user.email ?? "N").slice(0, 1).toUpperCase()}</span><span className="user-email">{session.user.email}</span><button className="icon-button" onClick={() => void signOut()} title="Sign out"><LogOut size={15} /></button></div>
       </div>
     </aside>
@@ -339,7 +366,7 @@ export default function App() {
         <div className="graph-legend">{LINK_TYPES.slice(0, 4).map((item) => <span key={item.value}><i />{item.label}</span>)}</div>
       </section> : activeNote ? <div className="editor-layout">
         <section className="editor-column">
-          <div className="editor-toolbar"><div className="editor-path"><span className="doc-icon" style={{ backgroundColor: activeNote.color }} /><span>{activeNote.category || "Uncategorized"}</span><span className="path-dot">/</span><span>{relativeDate(activeNote.updated_at)}</span></div><div className="editor-toolbar-actions"><span className="plain-badge">PRIVATE</span><button className="icon-button" title="Create a connection" onClick={() => { setLinkTarget(""); setShowLinkModal(true); }}><Link2 size={16} /></button><button className="icon-button" title="Open AI assistant" onClick={() => { setAiAction("explain"); setShowAiPanel(true); }}><MoreHorizontal size={18} /></button></div></div>
+          <div className="editor-toolbar"><div className="editor-path"><span className="doc-icon" style={{ backgroundColor: activeNote.color }} /><span>{activeNote.category || "Uncategorized"}</span><span className="path-dot">/</span><span>{relativeDate(activeNote.updated_at)}</span></div><div className="editor-toolbar-actions"><span className="plain-badge">PRIVATE</span><button className="icon-button" title="Create a connection" onClick={() => { setLinkTarget(""); setShowLinkModal(true); }}><Link2 size={16} /></button><button className="icon-button" title="Open AI assistant" onClick={() => { setAiAction("explain"); setAiResult(""); setAiDraftTitle(""); setAiProviderNotice(""); setAiError(""); setShowAiPanel(true); }}><MoreHorizontal size={18} /></button></div></div>
           <div className="editor-content"><div className="note-title-row"><input className="note-title-input" value={activeNote.title} maxLength={160} onChange={(event) => patchActive({ title: event.target.value })} aria-label="Note title" placeholder="Give this idea a name…" /><span className="title-counter">{activeNote.title.length}/160</span></div>
             <div className="note-metadata"><label className="metadata-field"><Hash size={14} /><input value={activeNote.category ?? ""} maxLength={80} placeholder="Add category" aria-label="Category" onChange={(event) => patchActive({ category: event.target.value.trim() ? event.target.value : null })} /></label><div className="color-picker" aria-label="Note color">{COLORS.map((color) => <button key={color} aria-label={"Set note color " + color} title={color} className={"color-swatch " + (activeNote.color === color ? "chosen" : "")} style={{ backgroundColor: color }} onClick={() => patchActive({ color })} />)}</div></div>
             <textarea className="note-body-input" value={activeNote.content} maxLength={50000} onChange={(event) => patchActive({ content: event.target.value })} placeholder={"Start with one idea.\n\nWhat do you want to remember? What does it connect to? Keep it small enough to think with, then link it to related ideas."} aria-label="Note content" spellCheck />
@@ -356,7 +383,7 @@ export default function App() {
           </div>
           <div className="ai-card"><div className="ai-card-title"><span className="ai-spark"><Sparkles size={15} /></span><div><strong>Think it through</strong><small>Optional AI assistance</small></div><span className="tiny-new">BETA</span></div><p>Get a clearer explanation or sharpen a draft. You decide what makes it into your notes.</p>
             <div className="ai-actions">{AI_ACTIONS.map((item) => <button key={item.action} className="ai-action" onClick={() => void runAi(item.action)}><span><strong>{item.title}</strong><small>{item.description}</small></span><ArrowRight size={14} /></button>)}</div>
-            <button className="ai-generate-link" onClick={() => { setAiAction("generate"); setAiPrompt(""); setAiResult(""); setAiError(""); setShowAiPanel(true); }}>Draft a new note from a prompt <ArrowRight size={13} /></button>
+            <button className="ai-generate-link" onClick={() => { setAiAction("generate"); setAiPrompt(""); setAiResult(""); setAiError(""); setAiDraftTitle(""); setAiProviderNotice(""); setShowAiPanel(true); }}>Draft a new note from a prompt <ArrowRight size={13} /></button>
           </div>
         </aside>
       </div> : <section className="welcome-empty"><div className="welcome-art"><div className="art-note art-note-a"><span /><span /><span /></div><div className="art-note art-note-b"><span /><span /></div><div className="art-node art-node-a" /><div className="art-node art-node-b" /><svg viewBox="0 0 200 130" aria-hidden="true"><path d="M46 65 L96 30 L149 74 L96 103 Z" /><path d="M46 65 L149 74" /></svg></div><p className="eyebrow">A SMALL IDEA CAN GO A LONG WAY</p><h1>Start with one thought.</h1><p className="muted">NoteLink gets more useful when your notes connect. Capture the idea first; make the connection when it becomes clear.</p><button className="button button-primary" onClick={() => void createNote()}><FilePlus2 size={16} /> Create your first note</button></section>}
@@ -365,10 +392,11 @@ export default function App() {
     {showLinkModal && activeNote && <div className="modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget) setShowLinkModal(false); }}><section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="link-modal-title"><div className="modal-heading"><div><p className="eyebrow">CONNECT TWO IDEAS</p><h2 id="link-modal-title">Add a connection</h2></div><button className="icon-button" onClick={() => setShowLinkModal(false)} aria-label="Close"><X size={17} /></button></div><p className="modal-description">Create a directional relationship from <strong>{activeNote.title}</strong> to another note.</p><form onSubmit={(event) => void createLink(event)} className="modal-form"><label htmlFor="target-note">Connect to</label><select id="target-note" value={linkTarget} onChange={(event) => setLinkTarget(event.target.value)} required><option value="">Choose a note…</option>{notes.filter((note) => note.id !== activeNote.id).map((note) => <option key={note.id} value={note.id}>{note.title}</option>)}</select><label htmlFor="link-type">Relationship</label><select id="link-type" value={linkType} onChange={(event) => setLinkType(event.target.value as LinkType)}>{LINK_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select><p className="modal-hint">{LINK_TYPES.find((type) => type.value === linkType)?.description}</p>{notes.length < 2 && <p className="notice notice-neutral">Create another note before adding a connection.</p>}<button className="button button-primary button-full" type="submit" disabled={linkBusy || !linkTarget || notes.length < 2}>{linkBusy ? "Connecting…" : "Create connection"} <ArrowRight size={15} /></button></form></section></div>}
 
     {showAiPanel && <div className="modal-backdrop ai-backdrop" onClick={(event) => { if (event.target === event.currentTarget && !aiBusy) setShowAiPanel(false); }}><section className="modal-card ai-modal" role="dialog" aria-modal="true" aria-labelledby="ai-modal-title"><div className="modal-heading"><div><p className="eyebrow"><Sparkles size={12} /> AI NOTE ASSISTANT</p><h2 id="ai-modal-title">{aiAction === "generate" ? "Draft a new note" : aiAction ? AI_ACTIONS.find((item) => item.action === aiAction)?.title ?? "Note assistant" : "What would help?"}</h2></div><button className="icon-button" onClick={() => setShowAiPanel(false)} aria-label="Close" disabled={aiBusy}><X size={17} /></button></div><p className="modal-description">AI creates a draft for you to review. It never changes a saved note until you choose to apply the result.</p>
-      <div className="ai-mode-tabs">{(["explain", "improve", "summarize", "generate"] as AiAction[]).map((action) => <button key={action} className={aiAction === action ? "active" : ""} onClick={() => { setAiAction(action); setAiResult(""); setAiError(""); }}>{action === "explain" ? "Explain" : action === "improve" ? "Improve" : action === "summarize" ? "Summarize" : "Generate"}</button>)}</div>
+      <div className="ai-mode-tabs">{(["explain", "improve", "summarize", "generate"] as AiAction[]).map((action) => <button key={action} className={aiAction === action ? "active" : ""} onClick={() => { setAiAction(action); setAiResult(""); setAiError(""); setAiDraftTitle(""); setAiProviderNotice(""); }}>{action === "explain" ? "Explain" : action === "improve" ? "Improve" : action === "summarize" ? "Summarize" : "Generate"}</button>)}</div>
       {aiAction === "generate" ? <div className="ai-prompt-field"><label htmlFor="ai-prompt">What should the note cover?</label><textarea id="ai-prompt" value={aiPrompt} onChange={(event) => setAiPrompt(event.target.value)} maxLength={2000} rows={3} placeholder="Example: Explain how database indexes reduce query work, with one simple example." /></div> : <div className="ai-source-preview"><span className="eyebrow">SOURCE NOTE</span><strong>{activeNote?.title ?? "No note selected"}</strong><p>{activeNote?.content ? activeNote.content.slice(0, 240) + (activeNote.content.length > 240 ? "…" : "") : "This note is empty. Add some text before asking AI to work on it."}</p></div>}
       {aiError && <div className="notice notice-error" role="alert">{aiError}</div>}
-      {aiResult && <div className="ai-result"><div className="ai-result-heading"><span><Sparkles size={14} /> Draft result</span><button className="tiny-icon-button" onClick={() => setAiResult("")} title="Discard draft"><X size={14} /></button></div><div className="ai-result-text">{aiResult}</div><div className="ai-result-actions"><button className="button button-secondary button-small" onClick={() => { void navigator.clipboard?.writeText(aiResult); setNotice("Draft copied to clipboard."); }}>Copy draft</button><button className="button button-primary button-small" onClick={() => void applyAiResult()}>{aiAction === "generate" ? "Create new note" : "Place in editor"} <ArrowRight size={14} /></button></div></div>}
+      {aiProviderNotice && <div className="notice notice-neutral" role="status">{aiProviderNotice}</div>}
+      {aiResult && <div className="ai-result"><div className="ai-result-heading"><span><Sparkles size={14} /> Draft result</span><button className="tiny-icon-button" onClick={() => { setAiResult(""); setAiDraftTitle(""); setAiProviderNotice(""); }} title="Discard draft"><X size={14} /></button></div>{aiAction === "generate" && aiDraftTitle && <div className="ai-result-title">{aiDraftTitle}</div>}<div className="ai-result-text">{aiResult}</div><div className="ai-result-actions"><button className="button button-secondary button-small" onClick={() => { const draftToCopy = aiAction === "generate" && aiDraftTitle ? "# " + aiDraftTitle + "\n\n" + aiResult : aiResult; void navigator.clipboard?.writeText(draftToCopy); setNotice("Draft copied to clipboard."); }}>Copy draft</button><button className="button button-primary button-small" onClick={() => void applyAiResult()}>{aiAction === "generate" ? "Create new note" : "Place in editor"} <ArrowRight size={14} /></button></div></div>}
       {!aiResult && <button className="button button-primary button-full" disabled={aiBusy || (aiAction === "generate" ? aiPrompt.trim().length < 5 : !activeNote?.content.trim())} onClick={() => void runAi(aiAction ?? "explain")}>{aiBusy ? <><LoaderCircle size={15} className="spin" /> Working on a draft…</> : <><Send size={15} /> Generate draft</>}</button>}
       <p className="ai-privacy-note">Only the text you submit is sent to the AI provider. Avoid sensitive information. Usage is limited per account.</p>
     </section></div>}
